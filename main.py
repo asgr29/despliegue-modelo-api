@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 import os
 import pickle
+from model import preprocess
 import pandas as pd
 import numpy as np
 
@@ -13,13 +14,37 @@ app = Flask(__name__)
 with open('ad_model.pkl', 'rb') as f:
     model = pickle.load(f)
 
+def train_model(df):
+
+    def clasificar_profit(x):
+        return 1 if x > 0 else 0
+
+    df["Profit_Class"] = df["Profit"].apply(clasificar_profit)
+
+    X = df.drop(columns=["Profit_Class"])
+    y = df["Profit_Class"]
+
+    global model
+    model.fit(X, y)
+
+    with open('ad_model_v2.pkl', 'wb') as f:
+        pickle.dump(model, f)
+
+    return model    
+
+def to_float(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return np.nan    
+
 
 # Landing page
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
         "mensaje": "API de predicción de pérdidas/ganancias",
-        "uso": "/api/v1/predict?Quantity=2&Discount=0.2&Order_Year=2020&Order_Month=5&Delivery_Days=3&Impact_Sales_Delay=10&ProductName_TE=0.5&Ship_Mode=Second Class&Segment=Consumer&Region=West&Category=Furniture&Sub-Category=Chairs"
+        "uso": "/api/v1/predict?Quantity=2&Discount=0.2&Order_Year=2020&Order_Month=5&Delivery_Days=3&Impact_Sales_Delay=10&Product_Name=Office Chair&Ship_Mode=Second Class&Segment=Consumer&Region=West&Category=Furniture&sub_category=Chairs"
     })
 
 
@@ -27,64 +52,67 @@ def home():
 @app.route('/api/v1/predict', methods=['GET'])
 def predict():
 
+    args = {k.lower(): v for k, v in request.args.items()}
+
     # Variables numéricas
-    quantity = request.args.get('Quantity', np.nan, type=float)
-    discount = request.args.get('Discount', np.nan, type=float)
-    order_year = request.args.get('Order_Year', np.nan, type=float)
-    order_month = request.args.get('Order_Month', np.nan, type=float)
-    delivery_days = request.args.get('Delivery_Days', np.nan, type=float)
-    impact_sales_delay = request.args.get('Impact_Sales_Delay', np.nan, type=float)
-    product_te = request.args.get('ProductName_TE', np.nan, type=float)
+    quantity = to_float(args.get('quantity', np.nan))
+    discount = to_float(args.get('discount', np.nan))
+    order_year = to_float(args.get('order_year', np.nan))
+    order_month = to_float(args.get('order_month', np.nan))
+    delivery_days = to_float(args.get('delivery_days', np.nan))
+    impact_sales_delay = to_float(args.get('impact_sales_delay', np.nan))
+    
 
     # Variables categóricas
 
-    ship_mode = request.args.get('Ship_Mode', None)
-    segment = request.args.get('Segment', None)
-    region = request.args.get('Region', None)
-    category = request.args.get('Category', None)
-    sub_category = request.args.get('Sub-Category', None)
+    ship_mode = to_float(args.get('ship_mode', None))
+    segment = to_float(args.get('segment', None))
+    region = to_float(args.get('region', None))
+    category = to_float(args.get('category', None))
+    sub_category = to_float(args.get('sub_category', None))
+    product_name = to_float(args.get('product_name', None))
 
     # DETECTAR NULOS
     missing = []
 
     # numéricos
     for name, val in [
-        ('Quantity', quantity),
-        ('Discount', discount),
-        ('Order_Year', order_year),
-        ('Order_Month', order_month),
-        ('Delivery_Days', delivery_days),
-        ('Impact_Sales_Delay', impact_sales_delay),
-        ('ProductName_TE', product_te)
+        ('quantity', quantity),
+        ('discount', discount),
+        ('order_year', order_year),
+        ('order_month', order_month),
+        ('delivery_days', delivery_days),
+        ('impact_sales_delay', impact_sales_delay)        
     ]:
         if np.isnan(val):
             missing.append(name)
 
     # categóricos
     for name, val in [
-        ('Ship_Mode', ship_mode),
-        ('Segment', segment),
-        ('Region', region),
-        ('Category', category),
-        ('Sub-Category', sub_category)
+        ('ship_mode', ship_mode),
+        ('segment', segment),
+        ('region', region),
+        ('category', category),
+        ('sub_category', sub_category),
+        ('product_name', product_name)
     ]:
         if val is None:
             missing.append(name)
 
     # CREAR DATAFRAME
     input_data = pd.DataFrame({
-        'Quantity': [quantity],
-        'Discount': [discount],
-        'Order_Year': [order_year],
-        'Order_Month': [order_month],
-        'Delivery_Days': [delivery_days],
-        'Impact_Sales_Delay': [impact_sales_delay],
-        'ProductName_TE': [product_te],
-        'Ship_Mode': [ship_mode],
-        'Segment': [segment],
-        'Region': [region],
-        'Category': [category],
-        'Sub-Category': [sub_category]
+        'quantity': [quantity],
+        'discount': [discount],
+        'order_year': [order_year],
+        'order_month': [order_month],
+        'delivery_days': [delivery_days],
+        'impact_sales_delay': [impact_sales_delay],
+        'product_name': [product_name],
+        'ship_mode': [ship_mode],
+        'segment': [segment],
+        'region': [region],
+        'category': [category],
+        'sub_category': [sub_category]
     })
 
     # PREDICCIÓN
@@ -105,9 +133,18 @@ def predict():
 # RETRAIN 
 @app.route('/api/v1/retrain', methods=['GET'])
 def retrain():
-    return jsonify({
-        "mensaje": "Reentrenamiento no implementado en esta versión"
-    })
+
+    if os.path.exists("data_sample/Superstore_synthetic.csv"):
+        data = pd.read_csv('data_sample/Superstore_synthetic.csv')
+
+        train_model(data)
+
+        return jsonify({
+            "mensaje": "Modelo reentrenado correctamente"
+            })
+    else:
+        return jsonify({
+            "error": "Archivo no encontrado"})
 
 
 # RUN

@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
@@ -31,75 +32,78 @@ def clasificar_profit(x):
 
 df["Profit_Class"] = df["Profit"].apply(clasificar_profit)
 
+
 def preprocess(df):
 
     df = df.copy()
 
-    df.columns = df.columns.str.replace(" ", "_")
+    df.columns = df.columns.str.lower().str.replace(" ", "_").str.replace("-", "_")
+
     # Drop columns
     cols_to_drop = [
-        "Row_ID", "Order_ID", "Product_ID",
-        "Customer_ID", "Postal_Code",
-        "Customer_Name", "Country","Profit"
+        "row_id", "order_id", "product_id",
+        "customer_id", "postal_code",
+        "customer_name", "country", "profit"
     ]
 
     df = df.drop(columns=cols_to_drop, errors="ignore")
 
     # Dates
-    df["Order_Date"] = pd.to_datetime(df["Order_Date"])
-    df["Ship_Date"] = pd.to_datetime(df["Ship_Date"])
+    if "order_date" in df.columns:
+        df["order_date"] = pd.to_datetime(df["order_date"])
 
-    df["Order_Year"] = df["Order_Date"].dt.year
-    df["Order_Month"] = df["Order_Date"].dt.month
-    df["Order_Day"] = df["Order_Date"].dt.day
+    if "ship_date" in df.columns:
+        df["ship_date"] = pd.to_datetime(df["ship_date"])
 
-    df["Ship_Year"] = df["Ship_Date"].dt.year
-    df["Ship_Month"] = df["Ship_Date"].dt.month
-    df["Ship_Day"] = df["Ship_Date"].dt.day
+    if "order_date" in df.columns:
+        df["order_year"] = df["order_date"].dt.year
+        df["order_month"] = df["order_date"].dt.month
+        df["order_day"] = df["order_date"].dt.day
+
+    if "ship_date" in df.columns:
+        df["ship_year"] = df["ship_date"].dt.year
+        df["ship_month"] = df["ship_date"].dt.month
+        df["ship_day"] = df["ship_date"].dt.day
 
     # Delivery days
-    df["Delivery_Days"] = (df["Ship_Date"] - df["Order_Date"]).dt.days
+    if "ship_date" in df.columns and "order_date" in df.columns:
+        df["delivery_days"] = (df["ship_date"] - df["order_date"]).dt.days
 
-    df = df.drop(columns=["Order_Date", "Ship_Date"], errors="ignore")
-    
+    df = df.drop(columns=["order_date", "ship_date"], errors="ignore")
+
     # Feature engineering
-    df["Impact_Sales_Delay"] = df["Sales"] * df["Delivery_Days"]
+    if "sales" in df.columns and "delivery_days" in df.columns:
+        df["impact_sales_delay"] = df["sales"] * df["delivery_days"]
 
     # Drop columns
-    df = df.drop(columns=["State", "City"], errors="ignore")
-    df = df.drop( columns = ["Sales","Ship_Year", "Ship_Month", "Ship_Day", "Order_Day"])
+    df = df.drop(columns=["state", "city"], errors="ignore")
+    df = df.drop(columns=["sales", "ship_year", "ship_month", "ship_day", "order_day"], errors="ignore")
+
     # Log transform
-    df["Impact_Sales_Delay"] = np.log1p(df["Impact_Sales_Delay"])
+    if "impact_sales_delay" in df.columns:
+        df["impact_sales_delay"] = np.log1p(df["impact_sales_delay"])
 
     return df
 
-df = preprocess(df)
+preprocess_transformer = FunctionTransformer(preprocess, validate = False)
+
 
 X = df.drop(columns=['Profit_Class'])
 y = df['Profit_Class']
-
-te_product = ce.CatBoostEncoder(cols=["Product_Name"])
-te_product.fit(X["Product_Name"], y)
-
-# Transformar
-X["ProductName_TE"] = te_product.transform(X["Product_Name"])
-
-X = X.drop(columns=["Product_Name"])
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
 
 
 features_num = [
-  'Quantity',
-  'Discount',
-  'Order_Year',
-  'Order_Month',
-  'Delivery_Days',
-  'Impact_Sales_Delay',
-  'ProductName_TE'
+  'quantity',
+  'discount',
+  'order_year',
+  'order_month',
+  'delivery_days',
+  'impact_sales_delay'
 ]
 
-features_cat = ['Ship_Mode', 'Segment', 'Region', 'Category', 'Sub-Category']
+features_cat = ['ship_mode', 'segment', 'region', 'category', 'sub_category']
 
 numeric_pipeline = Pipeline([
     ("imputer",SimpleImputer(strategy = "mean")),
@@ -111,14 +115,20 @@ categoric_pipeline = Pipeline([
     ("encoder", OneHotEncoder(handle_unknown="ignore"))
 ])
 
+catboost_pipeline = Pipeline([
+    ("encoder", ce.CatBoostEncoder())
+])
+
 preprocessor = ColumnTransformer([
     ("num", numeric_pipeline, features_num),
-    ("cat", categoric_pipeline, features_cat)
+    ("cat", categoric_pipeline, features_cat),
+    ("catboost", catboost_pipeline, ["product_name"])
 ])
 
 model = Pipeline([
+    ('preprocess', preprocess_transformer),
     ('preprocessor', preprocessor),
-    ('regressor', LogisticRegression())
+    ('classifier', LogisticRegression())
 ])
 
 # Cross validation
