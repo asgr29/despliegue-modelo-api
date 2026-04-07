@@ -44,7 +44,7 @@ def to_float(x):
 def home():
     return jsonify({
         "mensaje": "API de predicción de pérdidas/ganancias",
-        "uso": "/api/v1/predict?Quantity=2&Discount=0.2&Order_Year=2020&Order_Month=5&Delivery_Days=3&Impact_Sales_Delay=10&Product_Name=Office Chair&Ship_Mode=Second Class&Segment=Consumer&Region=West&Category=Furniture&sub_category=Chairs"
+        "uso": "/api/v1/predict?"
     })
 
 
@@ -129,9 +129,64 @@ def predict():
 
     return jsonify(response)
 
+'''
+# EXPLICACIÓN MODELO
+
+@app.route('/api/v2/explain', methods=['GET'])
+def explain():
+
+    args = {k.lower(): v for k, v in request.args.items()}
+
+    # Variables numéricas
+    quantity = to_float(args.get('quantity', np.nan))
+    discount = to_float(args.get('discount', np.nan))
+    delivery_days = to_float(args.get('delivery_days', np.nan))
+
+    # Variables categóricas
+    category = args.get('category', None)
+
+    # Lógica simple de explicación (heurística)
+    explicaciones = []
+
+    if not np.isnan(discount) and discount > 0.5:
+        explicaciones.append("Descuento alto -> reduce margen -> posible pérdida")
+
+    if not np.isnan(delivery_days) and delivery_days > 5:
+        explicaciones.append("Entrega lenta -> afecta ventas")
+
+    if not np.isnan(quantity) and quantity < 2:
+        explicaciones.append("Baja cantidad -> menor volumen de ingresos")
+
+    if category == "Furniture":
+        explicaciones.append("Categoría Furniture suele tener menor margen")
+
+    # Crear input mínimo para modelo
+    input_data = pd.DataFrame({
+        'quantity': [quantity],
+        'discount': [discount],
+        'order_year': [2020],
+        'order_month': [5],
+        'delivery_days': [delivery_days],
+        'impact_sales_delay': [1],
+        'product_name': ["Sample"],
+        'ship_mode': ["Second Class"],
+        'segment': ["Consumer"],
+        'region': ["West"],
+        'category': [category],
+        'sub_category': ["Chairs"]
+    })
+
+    pred = model.predict(input_data)
+    resultado = "ganancia" if pred[0] == 1 else "perdida"
+
+    return jsonify({
+        "prediccion": resultado,
+        "explicacion": explicaciones if explicaciones else ["No hay factores claros detectados"]
+    })
+'''
 
 # RETRAIN 
-@app.route('/api/v1/retrain', methods=['GET'])
+@app.route('/api/v3/retrain', methods=['GET'])
 def retrain():
 
     if os.path.exists("data_sample/Superstore_synthetic.csv"):
