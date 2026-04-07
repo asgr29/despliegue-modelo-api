@@ -2,6 +2,8 @@ from flask import Flask, jsonify, request
 import os
 import pickle
 from model import preprocess
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import pandas as pd
 import numpy as np
 
@@ -13,24 +15,7 @@ app = Flask(__name__)
 # Cargar modelo
 with open('ad_model.pkl', 'rb') as f:
     model = pickle.load(f)
-
-def train_model(df):
-
-    def clasificar_profit(x):
-        return 1 if x > 0 else 0
-
-    df["Profit_Class"] = df["Profit"].apply(clasificar_profit)
-
-    X = df.drop(columns=["Profit_Class"])
-    y = df["Profit_Class"]
-
-    global model
-    model.fit(X, y)
-
-    with open('ad_model_v2.pkl', 'wb') as f:
-        pickle.dump(model, f)
-
-    return model    
+  
 
 def to_float(x):
     try:
@@ -209,13 +194,38 @@ def explain():
 @app.route('/api/v3/retrain', methods=['GET'])
 def retrain():
 
-    if os.path.exists("data_sample/Superstore_synthetic.csv"):
-        data = pd.read_csv('data_sample/Superstore_synthetic.csv')
+    global model
 
-        train_model(data)
+    if os.path.exists("data_sample/Superstore.csv"):
+        data = pd.read_csv('data_sample/Superstore.csv', encoding="latin1")
+
+        def clasificar_profit(x):
+            return 1 if x > 0 else 0
+
+        data["Profit_Class"] = data["Profit"].apply(clasificar_profit)
+
+        X = data.drop(columns=["Profit_Class"])
+        y = data["Profit_Class"]
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+
+        model.fit(X_train,y_train)
+    
+        acc_score = accuracy_score(y_test, model.predict(X_test))
+        prec_score = precision_score(y_test, model.predict(X_test))
+        rec_score =  recall_score(y_test, model.predict(X_test))
+        f_score = f1_score(y_test, model.predict(X_test))
+
+        model.fit(X, y)
+
+
+
+        with open('ad_model.pkl', 'wb') as f:
+            pickle.dump(model, f)
 
         return jsonify({
-            "mensaje": "Modelo reentrenado correctamente"
+            "Mensaje": "Modelo reentrenado correctamente",
+            "Nuevas metricas": f"Accuracy: {acc_score:.2f}, Precision: {prec_score:.2f}, Recall: {rec_score:.2f}, F1: {f_score:.2f}"
             })
     else:
         return jsonify({

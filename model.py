@@ -22,7 +22,7 @@ pd.options.mode.copy_on_write = True
 #os.chdir(os.path.dirname(__file__))
 
 
-df = pd.read_csv("data_sample/Superstore.csv", encoding= "latin1")
+df = pd.read_csv("data_sample/Superstore_inicial.csv", encoding= "latin1")
 
 def clasificar_profit(x):
     if x > 0:
