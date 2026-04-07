@@ -65,32 +65,12 @@ def predict():
 
     # Variables categóricas
 
-    ship_mode = args.get('ship_mode')
-    segment = args.get('segment')
-    region = args.get('region')
-    category = args.get('category')
-    sub_category = args.get('sub_category')
-    product_name = args.get('product_name')
-
-    #  VALIDACIONES
-    errors = []
-
-    if quantity < 0:
-        errors.append("quantity no puede ser negativa")
-
-    if discount < 0 or discount > 1:
-        errors.append("discount debe estar entre 0 y 1")
-
-    if order_month < 1 or order_month > 12:
-        errors.append("order_month debe estar entre 1 y 12")
-
-    if delivery_days < 0:
-        errors.append("delivery_days no puede ser negativo")
-
-    if errors:
-        return jsonify({
-            "error": errors
-        }), 400
+    ship_mode = to_float(args.get('ship_mode', None))
+    segment = to_float(args.get('segment', None))
+    region = to_float(args.get('region', None))
+    category = to_float(args.get('category', None))
+    sub_category = to_float(args.get('sub_category', None))
+    product_name = to_float(args.get('product_name', None))
 
     # DETECTAR NULOS
     missing = []
